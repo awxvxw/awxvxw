@@ -1,0 +1,89 @@
+name: Build Pocket AI Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'model-config.json'
+      - '.github/workflows/android.yml'
+      - 'README.md'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout Pocket AI configuration
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK and NDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android build tools
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "cmake;3.22.1" "ndk;27.2.12479018"
+          echo "ANDROID_NDK=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_PATH"
+
+      - name: Clone official Alibaba MNN source
+        run: git clone --depth 1 https://github.com/alibaba/MNN.git MNN
+
+      - name: Download model files into APK assets
+        working-directory: MNN/apps/Android/MnnLlmChat
+        run: |
+          set -euo pipefail
+          MODEL_DIR="app/src/main/assets/builtin_models/MNN-Pocket-0.3B-MNN"
+          mkdir -p "$MODEL_DIR"
+          BASE="https://huggingface.co/taobao-mnn/MNN-Pocket-0.3B-MNN/resolve/main"
+          for f in llm.mnn llm.mnn.weight llm_config.json tokenizer.mtok config.json; do
+            echo "Downloading $f"
+            curl -fL --retry 5 --retry-delay 3 "$BASE/$f" -o "$MODEL_DIR/$f"
+          done
+          test -s "$MODEL_DIR/llm.mnn"
+          test -s "$MODEL_DIR/llm.mnn.weight"
+          test -s "$MODEL_DIR/tokenizer.mtok"
+          du -sh "$MODEL_DIR"
+
+      - name: Configure built-in model catalogue
+        run: cp model-config.json MNN/apps/Android/MnnLlmChat/model-config.json
+
+      - name: Build MNN Android native runtime
+        working-directory: MNN/project/android
+        run: |
+          set -euo pipefail
+          mkdir -p build_64
+          cd build_64
+          ../build_64.sh "-DMNN_LOW_MEMORY=true -DMNN_CPU_WEIGHT_DEQUANT_GEMM=true -DMNN_BUILD_LLM=true -DMNN_SUPPORT_TRANSFORMER_FUSE=true -DMNN_ARM82=true -DMNN_USE_LOGCAT=true -DMNN_OPENCL=true -DMNN_SEP_BUILD=OFF -DCMAKE_SHARED_LINKER_FLAGS=-Wl,-z,max-page-size=16384 -DCMAKE_INSTALL_PREFIX=."
+          make install -j2
+
+      - name: Build Android app with bundled model
+        working-directory: MNN/apps/Android/MnnLlmChat
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleStandardDebug -PADD_BUILTIN=true
+
+      - name: Verify APK contains bundled model
+        working-directory: MNN/apps/Android/MnnLlmChat
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/standard/debug/app-standard-debug.apk"
+          test -s "$APK"
+          unzip -l "$APK" | grep -E 'MNN-Pocket-0.3B-MNN/(llm.mnn|llm.mnn.weight|tokenizer.mtok|llm_config.json|config.json)'
+          ls -lh "$APK"
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PocketAI-Android-APK
+          path: MNN/apps/Android/MnnLlmChat/app/build/outputs/apk/standard/debug/app-standard-debug.apk
+          if-no-files-found: error
+          retention-days: 30
