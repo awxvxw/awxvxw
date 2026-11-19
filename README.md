@@ -17,3 +17,6 @@ Project initialization only. A working APK is not yet available. The Android run
 
 ## License
 The app code in this repository is Apache-2.0 unless otherwise noted. The model and MNN runtime retain their upstream licenses.
+
+
+Build workflow updated to use the runner-provided Android SDK and install only required SDK packages.
