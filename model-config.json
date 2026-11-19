@@ -1,0 +1,22 @@
+{
+  "models": [
+    {
+      "name": "MNN-Pocket-0.3B-MNN",
+      "url": "https://huggingface.co/taobao-mnn/MNN-Pocket-0.3B-MNN/resolve/main/model.zip",
+      "modelName": "MNN-Pocket-0.3B",
+      "vendor": "Alibaba MNN",
+      "size_gb": 0.173,
+      "tags": [
+        "Local",
+        "INT4"
+      ],
+      "categories": [
+        "recommended",
+        "chinese"
+      ],
+      "extra_tags": [],
+      "modelId": "Builtin/MNN/MNN-Pocket-0.3B-MNN",
+      "market_version": "1"
+    }
+  ]
+}
